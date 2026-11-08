@@ -17,7 +17,7 @@ public class MedicineController {
     private final MedicineService medicineService;
 
     /**
-     * API lấy chi tiết thuốc theo ID để test Redis Cache:
+     * API 1: Lấy chi tiết thuốc theo ID để test Redis Cache:
      * GET http://localhost:8081/api/medicines/1
      */
     @GetMapping("/{id}")
@@ -31,7 +31,49 @@ public class MedicineController {
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("medicine", medicine);
         response.put("responseTimeMs", responseTime + " ms");
-        response.put("note", responseTime < 20 ? "Lấy từ Redis Cache (Cực nhanh)" : "Lấy từ Database PostgreSQL (Lần đầu)");
+        response.put("dataSource", responseTime < 20 ? "REDIS_CACHE (Tốc độ cực nhanh < 10ms)" : "POSTGRESQL_DATABASE (Lần đầu nạp cache)");
+
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * API 2: Cập nhật thông tin/giá thuốc (Kích hoạt @CacheEvict để xóa cache cũ khỏi Redis):
+     * PUT http://localhost:8081/api/medicines/1
+     * Body: { "price": 35000.0 }
+     */
+    @PutMapping("/{id}")
+    public ResponseEntity<Map<String, Object>> updateMedicine(
+            @PathVariable Long id,
+            @RequestBody Medicine request) {
+        request.setId(id);
+        Medicine updated = medicineService.updateMedicine(request);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("status", "SUCCESS");
+        response.put("message", "Cập nhật giá thuốc thành công! Key 'medicines::" + id + "' đã bị XÓA khỏi Redis.");
+        response.put("updatedMedicine", updated);
+
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * API 3: Cập nhật giá nhanh qua Query Param (rất tiện test bằng Postman):
+     * PUT http://localhost:8081/api/medicines/1/price?newPrice=35000
+     */
+    @PutMapping("/{id}/price")
+    public ResponseEntity<Map<String, Object>> updatePrice(
+            @PathVariable Long id,
+            @RequestParam Double newPrice) {
+        Medicine medicine = Medicine.builder()
+                .id(id)
+                .price(newPrice)
+                .build();
+        Medicine updated = medicineService.updateMedicine(medicine);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("status", "SUCCESS");
+        response.put("message", "Cập nhật giá thuốc thành công (" + newPrice + " VND)! Key 'medicines::" + id + "' đã bị XÓA khỏi Redis.");
+        response.put("updatedMedicine", updated);
 
         return ResponseEntity.ok(response);
     }

@@ -5,6 +5,7 @@ import com.rikkei.microservice.pharmacyservice.repository.MedicineRepository;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
@@ -36,5 +37,37 @@ public class MedicineService {
                     .build();
             return medicineRepository.save(newMedicine);
         });
+    }
+
+    /**
+     * Cập nhật thông tin / sửa giá thuốc.
+     * Annotation @CacheEvict(value = "medicines", key = "#medicine.id"):
+     * - Khi một loại thuốc được sửa giá, Cache cũ trong Redis lập tức BỊ XÓA NGAY LẬP TỨC.
+     * - Nhờ đó, lần truy vấn sau hệ thống sẽ bắt buộc phải gọi lại DB để nạp lại giá mới nhất!
+     */
+    @CacheEvict(value = "medicines", key = "#medicine.id")
+    public Medicine updateMedicine(Medicine medicine) {
+        log.info(">> [DATABASE UPDATE] Đang cập nhật thuốc ID = {} với giá mới: {} VND vào Database...",
+                medicine.getId(), medicine.getPrice());
+
+        Medicine existing = medicineRepository.findById(medicine.getId())
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy thuốc với ID: " + medicine.getId()));
+
+        if (medicine.getPrice() != null) {
+            existing.setPrice(medicine.getPrice());
+        }
+        if (medicine.getMedicineName() != null) {
+            existing.setMedicineName(medicine.getMedicineName());
+        }
+        if (medicine.getDescription() != null) {
+            existing.setDescription(medicine.getDescription());
+        }
+        if (medicine.getStock() != null) {
+            existing.setStock(medicine.getStock());
+        }
+
+        Medicine updated = medicineRepository.save(existing);
+        log.info(">> [CACHE EVICTED] Đã xóa cache cũ của key 'medicines::{}' trong Redis!", medicine.getId());
+        return updated;
     }
 }
